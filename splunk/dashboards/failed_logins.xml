@@ -1,0 +1,160 @@
+<![CDATA[<dashboard version="1.1" theme="dark">
+  <label>Failed Logins — Authentication Monitoring</label>
+  <description>Monitor authentication failures across Windows (Event 4625) and Linux (auth.log) endpoints. MITRE ATT&CK: T1110 — Brute Force.</description>
+
+  <row>
+    <panel>
+      <single>
+        <title>Windows Failed Logins (24h)</title>
+        <search>
+          <query>index=wineventlog EventCode=4625 | stats count</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[25,100]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Linux Failed Logins (24h)</title>
+        <search>
+          <query>index=linux sourcetype=linux:auth "Failed password" | stats count</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[25,100]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Unique Attacking IPs</title>
+        <search>
+          <query>
+            (index=wineventlog EventCode=4625) OR (index=linux sourcetype=linux:auth "Failed password")
+            | eval src_ip=coalesce(src_ip, Source_Network_Address)
+            | stats dc(src_ip)
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[3,10]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>Failed Logins Over Time</title>
+        <search>
+          <query>
+            (index=wineventlog EventCode=4625) OR (index=linux sourcetype=linux:auth "Failed password")
+            | eval platform=case(index="wineventlog", "Windows", index="linux", "Linux")
+            | timechart span=15m count by platform
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>Windows Failed Logins — Detailed (Event ID 4625)</title>
+        <search>
+          <query>
+            index=wineventlog EventCode=4625
+            | eval logon_type_desc=case(
+                Logon_Type=2, "Interactive",
+                Logon_Type=3, "Network",
+                Logon_Type=7, "Unlock",
+                Logon_Type=10, "RemoteInteractive (RDP)",
+                1=1, "Type ".Logon_Type)
+            | table _time, ComputerName, Account_Name, Source_Network_Address, logon_type_desc, Failure_Reason
+            | sort -_time
+            | head 50
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>Linux Failed Logins — Detailed (auth.log)</title>
+        <search>
+          <query>
+            index=linux sourcetype=linux:auth "Failed password"
+            | rex "Failed password for (?:invalid user )?(?&lt;target_user&gt;\S+) from (?&lt;src_ip&gt;\d+\.\d+\.\d+\.\d+) port (?&lt;src_port&gt;\d+) (?&lt;protocol&gt;\S+)"
+            | table _time, host, target_user, src_ip, src_port, protocol
+            | sort -_time
+            | head 50
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>Top 10 Source IPs — Failed Logins</title>
+        <search>
+          <query>
+            (index=wineventlog EventCode=4625) OR (index=linux sourcetype=linux:auth "Failed password")
+            | eval src_ip=coalesce(src_ip, Source_Network_Address)
+            | stats count by src_ip
+            | sort -count
+            | head 10
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Top 10 Targeted Accounts</title>
+        <search>
+          <query>
+            (index=wineventlog EventCode=4625) OR (index=linux sourcetype=linux:auth "Failed password")
+            | eval target=coalesce(Account_Name, target_user)
+            | stats count by target
+            | sort -count
+            | head 10
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+</dashboard>
+]]>

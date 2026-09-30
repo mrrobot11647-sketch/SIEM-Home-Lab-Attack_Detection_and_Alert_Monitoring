@@ -1,0 +1,56 @@
+<![CDATA[# Dependencies & build artifacts
+*.pyc
+__pycache__/
+node_modules/
+*.egg-info/
+
+# Splunk artifacts
+splunk/local/
+splunk/metadata/local.meta
+*.pid
+*.log
+
+# Vagrant
+.vagrant/
+*.box
+
+# Ansible
+*.retry
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sensitive data — NEVER commit
+*.pem
+*.key
+*.crt
+*.pfx
+credentials.yml
+secrets.yml
+vault_pass.txt
+splunk-admin-password.txt
+
+# VM disk images
+*.vmdk
+*.vdi
+*.ova
+*.ovf
+*.iso
+
+# Sysmon binary (download separately)
+sysmon/Sysmon.exe
+sysmon/Sysmon64.exe
+sysmon/Sysmon64a.exe
+
+# Attack tool binaries
+attack-simulations/kali-attacks/wordlists/
+]]>

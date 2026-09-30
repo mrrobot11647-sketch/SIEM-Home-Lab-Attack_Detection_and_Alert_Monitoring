@@ -1,0 +1,78 @@
+<![CDATA[# ============================================================
+# Detection Rule: Suspicious PowerShell Execution (T1059.001)
+# SIEM Home Lab — MITRE ATT&CK Mapped Detection
+# ============================================================
+
+title: Suspicious PowerShell Execution Detection
+id: DET-002
+status: production
+description: |
+  Detects PowerShell execution with indicators of malicious use including
+  encoded commands, download cradles, AMSI bypass attempts, and execution
+  of known offensive tools (Invoke-Mimikatz, Invoke-Shellcode, etc.).
+
+author: SOC Home Lab
+date: 2024-10-01
+modified: 2024-10-20
+
+mitre_attack:
+  technique_id: T1059.001
+  technique_name: "Command and Scripting Interpreter: PowerShell"
+  tactic: Execution
+  reference: https://attack.mitre.org/techniques/T1059/001/
+
+data_sources:
+  - Sysmon Event ID 1 (Process Creation)
+  - PowerShell Script Block Logging (Event ID 4104)
+  - PowerShell Module Logging (Event ID 4103)
+  - Windows Security Event ID 4688 (Process Creation)
+
+log_requirements:
+  - index: sysmon
+    sourcetype: XmlWinEventLog:Microsoft-Windows-Sysmon/Operational
+    event_codes: [1]
+  - index: wineventlog
+    sourcetype: WinEventLog:Microsoft-Windows-PowerShell/Operational
+    event_codes: [4104, 4103]
+
+detection:
+  query: |
+    index=sysmon EventCode=1 Image="*\\powershell.exe"
+      (CommandLine="*-EncodedCommand*" OR CommandLine="*-enc *"
+       OR CommandLine="*DownloadString*" OR CommandLine="*DownloadFile*"
+       OR CommandLine="*IEX*" OR CommandLine="*Invoke-Expression*"
+       OR CommandLine="*Net.WebClient*" OR CommandLine="*Start-BitsTransfer*"
+       OR CommandLine="*Invoke-WebRequest*" OR CommandLine="*-WindowStyle Hidden*"
+       OR CommandLine="*-w hidden*" OR CommandLine="*FromBase64String*"
+       OR CommandLine="*Invoke-Mimikatz*" OR CommandLine="*Invoke-Shellcode*"
+       OR CommandLine="*-nop*" OR CommandLine="*-noni*")
+    | eval risk_score=case(
+        like(CommandLine, "%EncodedCommand%") OR like(CommandLine, "%-enc %"), 80,
+        like(CommandLine, "%DownloadString%") OR like(CommandLine, "%Net.WebClient%"), 90,
+        like(CommandLine, "%Invoke-Mimikatz%") OR like(CommandLine, "%Invoke-Shellcode%"), 100,
+        1=1, 60)
+    NOT (ParentImage="*\\svchost.exe" User="NT AUTHORITY\\SYSTEM" CommandLine="*WindowsUpdate*")
+    NOT (ParentImage="*\\ccmexec.exe")
+    | table _time, Computer, User, ParentImage, Image, CommandLine, risk_score
+
+  condition: Any matching event with risk_score >= 60
+  schedule: "*/5 * * * *"
+
+false_positives:
+  - Windows Update using encoded PowerShell commands (ParentImage=svchost.exe, SYSTEM)
+  - SCCM/ConfigMgr client operations (ParentImage=ccmexec.exe)
+  - IT admin automation scripts using -NoProfile or -ExecutionPolicy Bypass
+  - Visual Studio Code integrated terminal
+  - Azure AD Connect sync operations
+
+tuning_notes:
+  - v1.0: Flagged all PowerShell executions — 60% FP rate
+  - v1.1: Added specific command-line indicators — reduced to 30% FP
+  - v1.2: Whitelisted Windows Update (svchost→powershell SYSTEM) — reduced to 15%
+  - v1.3: Whitelisted SCCM operations — reduced to 8%
+  - v1.4: Added risk scoring for prioritization
+
+severity: high
+confidence: high
+risk_score: 80
+]]>

@@ -1,0 +1,142 @@
+<![CDATA[# ============================================================
+# SIEM Home Lab — Master Ansible Playbook
+# ============================================================
+# Usage:
+#   ansible-playbook -i inventory.ini playbook.yml
+#   ansible-playbook -i inventory.ini playbook.yml --tags splunk
+#   ansible-playbook -i inventory.ini playbook.yml --tags windows
+# ============================================================
+
+---
+# ── Splunk Enterprise Server ──
+- name: Configure Splunk Enterprise Server
+  hosts: splunk_server
+  become: true
+  tags: [splunk]
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install dependencies
+      apt:
+        name:
+          - wget
+          - curl
+          - net-tools
+          - ufw
+        state: present
+
+    - name: Copy Splunk installation script
+      copy:
+        src: ../scripts/install_splunk_server.sh
+        dest: /tmp/install_splunk_server.sh
+        mode: '0755'
+
+    - name: Run Splunk installation
+      shell: /tmp/install_splunk_server.sh
+      args:
+        creates: /opt/splunk/bin/splunk
+
+    - name: Copy Splunk indexes configuration
+      copy:
+        src: ../../splunk/indexes.conf
+        dest: /opt/splunk/etc/system/local/indexes.conf
+        owner: splunk
+        group: splunk
+      notify: Restart Splunk
+
+    - name: Copy Splunk props configuration
+      copy:
+        src: ../../splunk/props.conf
+        dest: /opt/splunk/etc/system/local/props.conf
+        owner: splunk
+        group: splunk
+      notify: Restart Splunk
+
+    - name: Copy Splunk transforms configuration
+      copy:
+        src: ../../splunk/transforms.conf
+        dest: /opt/splunk/etc/system/local/transforms.conf
+        owner: splunk
+        group: splunk
+      notify: Restart Splunk
+
+    - name: Copy saved searches (detection alerts)
+      copy:
+        src: ../../splunk/savedsearches.conf
+        dest: /opt/splunk/etc/system/local/savedsearches.conf
+        owner: splunk
+        group: splunk
+      notify: Restart Splunk
+
+    - name: Ensure Splunk is running
+      service:
+        name: Splunkd
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Restart Splunk
+      service:
+        name: Splunkd
+        state: restarted
+
+# ── Windows Target ──
+- name: Configure Windows Endpoint
+  hosts: windows_targets
+  tags: [windows]
+  tasks:
+    - name: Copy Sysmon configuration
+      win_copy:
+        src: ../../sysmon/sysmon-config.xml
+        dest: C:\Sysmon\sysmon-config.xml
+
+    - name: Run Sysmon installation script
+      win_shell: |
+        C:\vagrant\infrastructure\scripts\install_sysmon.ps1
+      args:
+        creates: C:\Windows\Sysmon64.exe
+
+    - name: Run Splunk UF installation script
+      win_shell: |
+        C:\vagrant\infrastructure\scripts\install_splunk_uf.ps1
+      args:
+        creates: C:\Program Files\SplunkUniversalForwarder\bin\splunk.exe
+
+    - name: Ensure Splunk UF service is running
+      win_service:
+        name: SplunkForwarder
+        start_mode: auto
+        state: started
+
+# ── Linux Target ──
+- name: Configure Linux Endpoint
+  hosts: linux_targets
+  become: true
+  tags: [linux]
+  tasks:
+    - name: Copy Linux logging script
+      copy:
+        src: ../scripts/configure_linux_logging.sh
+        dest: /tmp/configure_linux_logging.sh
+        mode: '0755'
+
+    - name: Run Linux logging configuration
+      shell: /tmp/configure_linux_logging.sh
+      args:
+        creates: /opt/splunkforwarder/bin/splunk
+
+    - name: Ensure auditd is running
+      service:
+        name: auditd
+        state: started
+        enabled: yes
+
+    - name: Ensure Splunk UF is running
+      service:
+        name: SplunkForwarder
+        state: started
+        enabled: yes
+]]>

@@ -1,0 +1,155 @@
+<![CDATA[<dashboard version="1.1" theme="dark">
+  <label>MITRE ATT&CK Coverage — Technique Heatmap</label>
+  <description>Visualize detection coverage mapped to the MITRE ATT&CK framework. Shows which techniques have been detected and their frequency.</description>
+
+  <row>
+    <panel>
+      <html>
+        <style>
+          .mitre-table { width: 100%; border-collapse: collapse; }
+          .mitre-table th { background: #1a1a2e; color: #e94560; padding: 12px; text-align: left; font-size: 14px; }
+          .mitre-table td { padding: 10px; border-bottom: 1px solid #333; }
+          .tactic-header { background: #16213e !important; color: #0f3460 !important; font-weight: bold; }
+          .detected { background: rgba(233, 69, 96, 0.2); border-left: 4px solid #e94560; }
+          .covered { background: rgba(83, 160, 81, 0.2); border-left: 4px solid #53a051; }
+        </style>
+        <h2 style="color: #e94560; text-align: center;">🛡️ MITRE ATT&CK Detection Coverage Matrix</h2>
+        <p style="color: #999; text-align: center;">Techniques actively monitored and detected in this lab environment</p>
+        <table class="mitre-table">
+          <tr>
+            <th>Tactic</th>
+            <th>Technique ID</th>
+            <th>Technique Name</th>
+            <th>Detection Status</th>
+            <th>Data Source</th>
+          </tr>
+          <tr class="detected">
+            <td><strong>Credential Access</strong></td>
+            <td>T1110.001</td>
+            <td>Brute Force: Password Guessing</td>
+            <td>✅ Active Alert</td>
+            <td>Windows Event 4625, Linux auth.log</td>
+          </tr>
+          <tr class="detected">
+            <td><strong>Execution</strong></td>
+            <td>T1059.001</td>
+            <td>Command &amp; Scripting: PowerShell</td>
+            <td>✅ Active Alert</td>
+            <td>Sysmon Event 1, PowerShell 4104</td>
+          </tr>
+          <tr class="detected">
+            <td><strong>Persistence</strong></td>
+            <td>T1053.005</td>
+            <td>Scheduled Task/Job</td>
+            <td>✅ Active Alert</td>
+            <td>Sysmon Event 1, Windows Event 4698</td>
+          </tr>
+          <tr class="detected">
+            <td><strong>Credential Access</strong></td>
+            <td>T1003.001</td>
+            <td>OS Credential Dumping: LSASS</td>
+            <td>✅ Active Alert</td>
+            <td>Sysmon Event 10</td>
+          </tr>
+          <tr class="detected">
+            <td><strong>Privilege Escalation</strong></td>
+            <td>T1548.002</td>
+            <td>Bypass User Account Control</td>
+            <td>✅ Active Alert</td>
+            <td>Sysmon Event 13</td>
+          </tr>
+          <tr class="covered">
+            <td><strong>Discovery</strong></td>
+            <td>T1082</td>
+            <td>System Information Discovery</td>
+            <td>📊 Monitored</td>
+            <td>Sysmon Event 1 (systeminfo, whoami)</td>
+          </tr>
+          <tr class="covered">
+            <td><strong>Defense Evasion</strong></td>
+            <td>T1218</td>
+            <td>System Binary Proxy Execution</td>
+            <td>📊 Monitored</td>
+            <td>Sysmon Event 1 (rundll32, regsvr32)</td>
+          </tr>
+          <tr class="covered">
+            <td><strong>Persistence</strong></td>
+            <td>T1547.001</td>
+            <td>Boot/Logon Autostart: Registry Run Keys</td>
+            <td>📊 Monitored</td>
+            <td>Sysmon Event 13</td>
+          </tr>
+          <tr class="covered">
+            <td><strong>Lateral Movement</strong></td>
+            <td>T1021.001</td>
+            <td>Remote Services: RDP</td>
+            <td>📊 Monitored</td>
+            <td>Windows Event 4624 (Type 10), Sysmon Event 3</td>
+          </tr>
+          <tr class="covered">
+            <td><strong>Exfiltration</strong></td>
+            <td>T1041</td>
+            <td>Exfiltration Over C2 Channel</td>
+            <td>📊 Monitored</td>
+            <td>Sysmon Event 3, DNS Event 22</td>
+          </tr>
+        </table>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>Detection Events by MITRE Tactic (24h)</title>
+        <search>
+          <query>
+            index=sysmon OR index=wineventlog
+            | eval tactic=case(
+                EventCode=4625 OR (EventCode=10 AND TargetImage="*lsass*"), "Credential Access",
+                EventCode=1 AND (Image="*powershell*" OR Image="*cmd.exe*" OR Image="*wscript*"), "Execution",
+                EventCode=1 AND Image="*schtasks*", "Persistence",
+                EventCode=13 AND TargetObject="*ms-settings*", "Privilege Escalation",
+                EventCode=3, "Command and Control",
+                EventCode=1 AND (Image="*rundll32*" OR Image="*regsvr32*"), "Defense Evasion",
+                EventCode=1 AND (CommandLine="*whoami*" OR CommandLine="*systeminfo*" OR CommandLine="*ipconfig*"), "Discovery",
+                1=1, "Other")
+            | where tactic!="Other"
+            | stats count by tactic
+            | sort -count
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.chart.showDataLabels">all</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Detection Events Timeline by Technique</title>
+        <search>
+          <query>
+            index=sysmon OR index=wineventlog
+            | eval technique=case(
+                EventCode=4625, "T1110-Brute Force",
+                EventCode=1 AND Image="*powershell*", "T1059.001-PowerShell",
+                EventCode=1 AND Image="*schtasks*", "T1053-Scheduled Task",
+                EventCode=10 AND TargetImage="*lsass*", "T1003-Credential Dump",
+                EventCode=13 AND TargetObject="*ms-settings*", "T1548-UAC Bypass",
+                1=1, "Other")
+            | where technique!="Other"
+            | timechart span=1h count by technique
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+  </row>
+</dashboard>
+]]>

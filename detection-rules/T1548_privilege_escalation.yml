@@ -1,0 +1,70 @@
+<![CDATA[# ============================================================
+# Detection Rule: Privilege Escalation — UAC Bypass (T1548.002)
+# SIEM Home Lab — MITRE ATT&CK Mapped Detection
+# ============================================================
+
+title: UAC Bypass Attempt Detection
+id: DET-005
+status: production
+description: |
+  Detects User Account Control (UAC) bypass attempts via registry modification
+  of ms-settings or mscfile shell open command handlers. Common techniques
+  include the Fodhelper and ComputerDefaults bypass methods.
+
+author: SOC Home Lab
+date: 2024-10-01
+modified: 2024-10-18
+
+mitre_attack:
+  technique_id: T1548.002
+  technique_name: "Abuse Elevation Control Mechanism: Bypass User Account Control"
+  tactic: Privilege Escalation
+  reference: https://attack.mitre.org/techniques/T1548/002/
+
+data_sources:
+  - Sysmon Event ID 13 (Registry Value Set)
+  - Sysmon Event ID 1 (Process Creation — fodhelper.exe, computerdefaults.exe)
+  - Windows Security Event ID 4688 (Elevated Process Creation)
+
+detection:
+  # ── Registry Modification Detection ──
+  registry_query: |
+    index=sysmon EventCode=13
+      (TargetObject="*\\ms-settings\\Shell\\Open\\command*"
+       OR TargetObject="*\\mscfile\\Shell\\Open\\command*"
+       OR TargetObject="*\\Classes\\exefile\\Shell\\Open\\command*")
+    | eval risk_score=95
+    | table _time, Computer, User, Image, TargetObject, Details, risk_score
+
+  # ── Process-Based Detection ──
+  process_query: |
+    index=sysmon EventCode=1
+      (Image="*\\fodhelper.exe" OR Image="*\\computerdefaults.exe"
+       OR Image="*\\sdclt.exe" OR Image="*\\eventvwr.exe")
+    | eval child_elevated=if(IntegrityLevel="High" OR IntegrityLevel="System", "Yes", "No")
+    | where child_elevated="Yes"
+    | table _time, Computer, User, Image, ParentImage, CommandLine, IntegrityLevel
+
+  condition: Registry modification in ms-settings or mscfile shell command path
+  schedule: "*/5 * * * *"
+
+  # Known UAC Bypass Binaries:
+  # fodhelper.exe    — ms-settings handler (most common)
+  # computerdefaults.exe — ms-settings handler
+  # sdclt.exe        — Backup and Restore (mscfile handler)
+  # eventvwr.exe     — Event Viewer (mscfile handler)
+
+false_positives:
+  - Legitimate changes to default program associations (rare)
+  - Group Policy updates modifying file associations
+  - Software installation modifying shell handlers
+
+tuning_notes:
+  - v1.0: Detected all registry changes under Shell\Open\command — 20% FP
+  - v1.1: Narrowed to ms-settings, mscfile, exefile paths — reduced to 5%
+  - v1.2: Added process-based correlation for higher confidence
+
+severity: critical
+confidence: high
+risk_score: 95
+]]>

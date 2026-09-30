@@ -1,0 +1,193 @@
+<![CDATA[<dashboard version="1.1" theme="dark">
+  <label>SOC Overview — SIEM Home Lab</label>
+  <description>Real-time Security Operations Center dashboard with alert summary, event volume, and top threat indicators.</description>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Row 1: Key Metrics                          -->
+  <!-- ═══════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <single>
+        <title>Total Events (24h)</title>
+        <search>
+          <query>index=* earliest=-24h | stats count</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0x006d9c","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[1000,10000,50000]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Failed Logins (24h)</title>
+        <search>
+          <query>index=wineventlog EventCode=4625 earliest=-24h | stats count</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,50]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Alerts Triggered (24h)</title>
+        <search>
+          <query>index=_audit action=alert_fired earliest=-24h | stats count</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,20]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Unique Source IPs (24h)</title>
+        <search>
+          <query>index=* earliest=-24h src_ip=* | stats dc(src_ip)</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0x006d9c","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,15,30]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Active Hosts</title>
+        <search>
+          <query>index=* earliest=-1h | stats dc(host)</query>
+          <earliest>-1h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[1,2]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Row 2: Event Volume Timeline                -->
+  <!-- ═══════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <chart>
+        <title>Event Volume by Index (Last 24 Hours)</title>
+        <search>
+          <query>index=* earliest=-24h | timechart span=1h count by index</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Row 3: Top Threats                          -->
+  <!-- ═══════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <table>
+        <title>Top Source IPs by Failed Logins</title>
+        <search>
+          <query>
+            (index=wineventlog EventCode=4625) OR (index=linux sourcetype=linux:auth "Failed password")
+            | eval src_ip=coalesce(src_ip, Source_Network_Address)
+            | stats count as failures by src_ip
+            | sort -failures
+            | head 10
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">10</option>
+      </table>
+    </panel>
+    <panel>
+      <table>
+        <title>Recent Suspicious Process Executions</title>
+        <search>
+          <query>
+            index=sysmon EventCode=1
+            (Image="*\\powershell.exe" OR Image="*\\cmd.exe" OR Image="*\\certutil.exe"
+             OR Image="*\\mshta.exe" OR Image="*\\wscript.exe" OR Image="*\\rundll32.exe")
+            | eval process_name=replace(Image, ".*\\\\", "")
+            | table _time, Computer, User, process_name, ParentImage, CommandLine
+            | sort -_time
+            | head 10
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">10</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Row 4: MITRE ATT&CK Triggered Techniques   -->
+  <!-- ═══════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <chart>
+        <title>MITRE ATT&CK Techniques Detected (24h)</title>
+        <search>
+          <query>
+            index=_audit action=alert_fired earliest=-24h
+            | rex field=ss_name "T\d{4}(?:\.\d{3})?"
+            | eval technique=case(
+                like(ss_name, "%T1110%"), "T1110 - Brute Force",
+                like(ss_name, "%T1059%"), "T1059.001 - PowerShell",
+                like(ss_name, "%T1053%"), "T1053.005 - Scheduled Task",
+                like(ss_name, "%T1003%"), "T1003.001 - LSASS Memory",
+                like(ss_name, "%T1548%"), "T1548.002 - UAC Bypass",
+                1=1, "Other")
+            | stats count by technique
+            | sort -count
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.chart.showDataLabels">all</option>
+      </chart>
+    </panel>
+    <panel>
+      <table>
+        <title>Recent Alert Activity</title>
+        <search>
+          <query>
+            index=_audit action=alert_fired earliest=-24h
+            | table _time, ss_name, severity, user
+            | sort -_time
+            | head 15
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">15</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>
+]]>

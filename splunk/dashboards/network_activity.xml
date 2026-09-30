@@ -1,0 +1,158 @@
+<![CDATA[<dashboard version="1.1" theme="dark">
+  <label>Network Activity — Connection Monitoring</label>
+  <description>Monitor network connections via Sysmon Event ID 3. Track outbound connections, suspicious ports, and process-to-network relationships.</description>
+
+  <row>
+    <panel>
+      <single>
+        <title>Total Network Events (24h)</title>
+        <search>
+          <query>index=sysmon EventCode=3 | stats count</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Unique Destination IPs</title>
+        <search>
+          <query>index=sysmon EventCode=3 | stats dc(DestinationIp)</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Suspicious Process Connections</title>
+        <search>
+          <query>
+            index=sysmon EventCode=3
+            (Image="*\\powershell.exe" OR Image="*\\cmd.exe" OR Image="*\\certutil.exe"
+             OR Image="*\\rundll32.exe" OR Image="*\\regsvr32.exe" OR Image="*\\mshta.exe")
+            | stats count
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,20]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>Network Connections Over Time</title>
+        <search>
+          <query>
+            index=sysmon EventCode=3
+            | timechart span=1h count by DestinationPort limit=10
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>Outbound Connections — Detailed</title>
+        <search>
+          <query>
+            index=sysmon EventCode=3 Initiated="true"
+            | eval process_name=replace(Image, ".*\\\\", "")
+            | table _time, Computer, User, process_name, SourceIp, SourcePort, DestinationIp, DestinationPort, Protocol
+            | sort -_time
+            | head 50
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>Top 10 Destination IPs</title>
+        <search>
+          <query>
+            index=sysmon EventCode=3
+            | stats count by DestinationIp
+            | sort -count
+            | head 10
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Top 10 Destination Ports</title>
+        <search>
+          <query>
+            index=sysmon EventCode=3
+            | eval port_label=case(
+                DestinationPort=80, "HTTP (80)",
+                DestinationPort=443, "HTTPS (443)",
+                DestinationPort=3389, "RDP (3389)",
+                DestinationPort=22, "SSH (22)",
+                DestinationPort=445, "SMB (445)",
+                DestinationPort=53, "DNS (53)",
+                DestinationPort=4444, "SUSPICIOUS (4444)",
+                1=1, "Port ".DestinationPort)
+            | stats count by port_label
+            | sort -count
+            | head 10
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.chart.showDataLabels">all</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>Suspicious Process Network Connections</title>
+        <search>
+          <query>
+            index=sysmon EventCode=3
+            (Image="*\\powershell.exe" OR Image="*\\cmd.exe" OR Image="*\\certutil.exe"
+             OR Image="*\\rundll32.exe" OR Image="*\\regsvr32.exe" OR Image="*\\mshta.exe"
+             OR Image="*\\wscript.exe" OR Image="*\\cscript.exe" OR Image="*\\bitsadmin.exe")
+            | eval process_name=replace(Image, ".*\\\\", "")
+            | table _time, Computer, User, process_name, DestinationIp, DestinationPort
+            | sort -_time
+            | head 30
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>
+]]>

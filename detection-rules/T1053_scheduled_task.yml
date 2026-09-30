@@ -1,0 +1,58 @@
+<![CDATA[# ============================================================
+# Detection Rule: Scheduled Task Persistence (T1053.005)
+# SIEM Home Lab — MITRE ATT&CK Mapped Detection
+# ============================================================
+
+title: Suspicious Scheduled Task Creation
+id: DET-003
+status: production
+description: |
+  Detects creation of scheduled tasks via schtasks.exe from non-standard parent
+  processes, particularly those running as SYSTEM or with hidden window styles,
+  which may indicate attacker persistence mechanisms.
+
+author: SOC Home Lab
+date: 2024-10-01
+modified: 2024-10-18
+
+mitre_attack:
+  technique_id: T1053.005
+  technique_name: "Scheduled Task/Job: Scheduled Task"
+  tactic: Persistence
+  reference: https://attack.mitre.org/techniques/T1053/005/
+
+data_sources:
+  - Sysmon Event ID 1 (Process Creation — schtasks.exe)
+  - Windows Security Event ID 4698 (Scheduled Task Created)
+  - Windows Security Event ID 4702 (Scheduled Task Updated)
+
+detection:
+  query: |
+    index=sysmon EventCode=1 Image="*\\schtasks.exe" CommandLine="*/create*"
+    | where NOT match(ParentImage, "(?i)(services|taskeng|wmiprvse|svchost|mmc)\.exe$")
+    | eval risk_score=case(
+        like(CommandLine, "%SYSTEM%"), 90,
+        like(CommandLine, "%onlogon%") OR like(CommandLine, "%onstart%"), 80,
+        like(CommandLine, "%Hidden%"), 85,
+        1=1, 60)
+    | table _time, Computer, User, ParentImage, Image, CommandLine, risk_score
+
+  condition: schtasks.exe /create from non-standard parent process
+  schedule: "*/5 * * * *"
+
+false_positives:
+  - IT management tools creating legitimate scheduled tasks
+  - Group Policy scheduled task deployment
+  - Windows Task Scheduler management console (mmc.exe)
+  - Software installation creating maintenance tasks
+
+tuning_notes:
+  - v1.0: Alerted on all schtasks.exe /create — 50% FP rate
+  - v1.1: Excluded services.exe, taskeng.exe parents — reduced to 25%
+  - v1.2: Excluded wmiprvse.exe, svchost.exe parents — reduced to 10%
+  - v1.3: Added risk scoring based on SYSTEM/onlogon/Hidden flags
+
+severity: high
+confidence: medium
+risk_score: 75
+]]>

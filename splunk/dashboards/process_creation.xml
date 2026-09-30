@@ -1,0 +1,162 @@
+<![CDATA[<dashboard version="1.1" theme="dark">
+  <label>Process Creation — Execution Monitoring</label>
+  <description>Track process creation events via Sysmon Event ID 1 with parent-child process relationships and command-line analysis.</description>
+
+  <row>
+    <panel>
+      <single>
+        <title>Total Process Events (24h)</title>
+        <search>
+          <query>index=sysmon EventCode=1 | stats count</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Suspicious Processes (24h)</title>
+        <search>
+          <query>
+            index=sysmon EventCode=1
+            (Image="*\\powershell.exe" OR Image="*\\cmd.exe" OR Image="*\\certutil.exe"
+             OR Image="*\\mshta.exe" OR Image="*\\wscript.exe" OR Image="*\\cscript.exe"
+             OR Image="*\\rundll32.exe" OR Image="*\\regsvr32.exe" OR Image="*\\schtasks.exe")
+            | stats count
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,50]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Unique Process Names</title>
+        <search>
+          <query>index=sysmon EventCode=1 | eval proc=replace(Image,".*\\\\","") | stats dc(proc)</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>Process Creation Over Time</title>
+        <search>
+          <query>
+            index=sysmon EventCode=1
+            | eval process_name=replace(Image, ".*\\\\", "")
+            | timechart span=1h count by process_name limit=10
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>Suspicious Process Executions — Detailed</title>
+        <search>
+          <query>
+            index=sysmon EventCode=1
+            (Image="*\\powershell.exe" OR Image="*\\cmd.exe" OR Image="*\\certutil.exe"
+             OR Image="*\\mshta.exe" OR Image="*\\wscript.exe" OR Image="*\\cscript.exe"
+             OR Image="*\\rundll32.exe" OR Image="*\\regsvr32.exe" OR Image="*\\schtasks.exe"
+             OR Image="*\\bitsadmin.exe" OR Image="*\\msbuild.exe")
+            | eval process_name=replace(Image, ".*\\\\", "")
+            | eval parent_name=replace(ParentImage, ".*\\\\", "")
+            | table _time, Computer, User, process_name, parent_name, CommandLine, Hashes
+            | sort -_time
+            | head 50
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>Parent-Child Process Relationships (Top 15)</title>
+        <search>
+          <query>
+            index=sysmon EventCode=1
+            | eval process_name=replace(Image, ".*\\\\", "")
+            | eval parent_name=replace(ParentImage, ".*\\\\", "")
+            | eval relationship=parent_name." → ".process_name
+            | stats count by relationship
+            | sort -count
+            | head 15
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.chart.showDataLabels">all</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Processes by User</title>
+        <search>
+          <query>
+            index=sysmon EventCode=1
+            | stats count by User
+            | sort -count
+            | head 10
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>Processes Launched From Unusual Locations</title>
+        <search>
+          <query>
+            index=sysmon EventCode=1
+            (Image="*\\Users\\Public\\*" OR Image="*\\Temp\\*"
+             OR Image="*\\Downloads\\*" OR Image="*\\AppData\\Local\\Temp\\*"
+             OR Image="*\\ProgramData\\*")
+            | eval process_name=replace(Image, ".*\\\\", "")
+            | table _time, Computer, User, Image, ParentImage, CommandLine
+            | sort -_time
+            | head 20
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>
+]]>

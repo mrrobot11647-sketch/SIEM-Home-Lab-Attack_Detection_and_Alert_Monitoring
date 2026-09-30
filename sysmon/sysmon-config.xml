@@ -1,0 +1,171 @@
+<![CDATA[<!--
+  ============================================================
+  SIEM Home Lab — Sysmon Configuration
+  Based on: SwiftOnSecurity/sysmon-config (modified for lab)
+  Version: 1.0
+  
+  Monitored Event Types:
+    Event ID 1  - Process Creation
+    Event ID 3  - Network Connection
+    Event ID 7  - Image Loaded
+    Event ID 8  - CreateRemoteThread
+    Event ID 10 - Process Access
+    Event ID 11 - File Create
+    Event ID 12 - Registry Object Added/Deleted
+    Event ID 13 - Registry Value Set
+    Event ID 15 - FileCreateStreamHash
+    Event ID 22 - DNS Query
+  ============================================================
+-->
+<Sysmon schemaversion="4.90">
+  <HashAlgorithms>md5,sha256,IMPHASH</HashAlgorithms>
+  <CheckRevocation>true</CheckRevocation>
+
+  <EventFiltering>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- Event ID 1: Process Creation               -->
+    <!-- ═══════════════════════════════════════════ -->
+    <RuleGroup name="ProcessCreation" groupRelation="or">
+      <ProcessCreate onmatch="include">
+        <!-- Suspicious executables -->
+        <Image condition="contains any">powershell.exe;cmd.exe;wscript.exe;cscript.exe;mshta.exe;regsvr32.exe;rundll32.exe;certutil.exe;bitsadmin.exe;msbuild.exe;installutil.exe</Image>
+        <!-- Living off the land binaries -->
+        <Image condition="contains any">schtasks.exe;at.exe;reg.exe;net.exe;net1.exe;sc.exe;wmic.exe;whoami.exe;nltest.exe;dsquery.exe;csvde.exe</Image>
+        <!-- Credential tools -->
+        <Image condition="contains any">mimikatz.exe;procdump.exe;psexec.exe;lazagne.exe</Image>
+        <!-- Encoded commands -->
+        <CommandLine condition="contains any">-EncodedCommand;-enc ;-e ;FromBase64String;-nop;-noni;-w hidden;-windowstyle hidden;bypass</CommandLine>
+        <!-- Download cradles -->
+        <CommandLine condition="contains any">DownloadString;DownloadFile;DownloadData;Net.WebClient;Start-BitsTransfer;Invoke-WebRequest;wget;curl;IEX;Invoke-Expression</CommandLine>
+        <!-- Scheduled task creation -->
+        <CommandLine condition="contains any">/create;schtasks;Register-ScheduledTask</CommandLine>
+        <!-- Service manipulation -->
+        <CommandLine condition="contains any">sc config;sc create;sc start;New-Service</CommandLine>
+        <!-- Reconnaissance -->
+        <CommandLine condition="contains any">whoami;systeminfo;ipconfig;netstat;tasklist;net user;net group;net localgroup;nltest;dsquery</CommandLine>
+        <!-- Process spawned from unusual locations -->
+        <Image condition="contains any">\Users\Public;\\AppData\\Local\\Temp;\\Downloads\\;\\ProgramData\\</Image>
+      </ProcessCreate>
+    </RuleGroup>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- Event ID 3: Network Connection              -->
+    <!-- ═══════════════════════════════════════════ -->
+    <RuleGroup name="NetworkConnection" groupRelation="or">
+      <NetworkConnect onmatch="include">
+        <!-- Suspicious processes making network connections -->
+        <Image condition="contains any">powershell.exe;cmd.exe;wscript.exe;cscript.exe;mshta.exe;certutil.exe;rundll32.exe;regsvr32.exe</Image>
+        <!-- Connections to common attack ports -->
+        <DestinationPort condition="is any">4444;5555;6666;7777;8888;9999;1234;31337;443;80</DestinationPort>
+        <!-- Connections from temp/user directories -->
+        <Image condition="contains any">\Temp\;\Downloads\;\Public\;\AppData\</Image>
+      </NetworkConnect>
+      <NetworkConnect onmatch="exclude">
+        <!-- Reduce noise from system processes -->
+        <Image condition="is">C:\Windows\System32\svchost.exe</Image>
+        <DestinationIp condition="is any">127.0.0.1;::1</DestinationIp>
+      </NetworkConnect>
+    </RuleGroup>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- Event ID 7: Image Loaded (DLL)              -->
+    <!-- ═══════════════════════════════════════════ -->
+    <RuleGroup name="ImageLoad" groupRelation="or">
+      <ImageLoad onmatch="include">
+        <!-- DLLs loaded from unusual paths -->
+        <ImageLoaded condition="contains any">\Temp\;\Downloads\;\Public\;\AppData\Local\Temp</ImageLoaded>
+        <!-- Suspicious DLLs -->
+        <ImageLoaded condition="contains any">clr.dll;mscoree.dll;amsi.dll</ImageLoaded>
+      </ImageLoad>
+    </RuleGroup>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- Event ID 8: CreateRemoteThread              -->
+    <!-- ═══════════════════════════════════════════ -->
+    <RuleGroup name="CreateRemoteThread" groupRelation="or">
+      <CreateRemoteThread onmatch="include">
+        <!-- Log all remote thread creation (high signal) -->
+        <TargetImage condition="contains any">lsass.exe;csrss.exe;winlogon.exe;svchost.exe;services.exe</TargetImage>
+      </CreateRemoteThread>
+    </RuleGroup>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- Event ID 10: Process Access                 -->
+    <!-- ═══════════════════════════════════════════ -->
+    <RuleGroup name="ProcessAccess" groupRelation="or">
+      <ProcessAccess onmatch="include">
+        <!-- LSASS access (credential dumping) -->
+        <TargetImage condition="contains">lsass.exe</TargetImage>
+      </ProcessAccess>
+      <ProcessAccess onmatch="exclude">
+        <!-- Exclude known legitimate LSASS accessors -->
+        <SourceImage condition="is">C:\Windows\System32\csrss.exe</SourceImage>
+        <SourceImage condition="is">C:\Windows\System32\wininit.exe</SourceImage>
+        <SourceImage condition="is">C:\Windows\System32\lsm.exe</SourceImage>
+        <SourceImage condition="contains">MsMpEng.exe</SourceImage>
+      </ProcessAccess>
+    </RuleGroup>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- Event ID 11: File Create                    -->
+    <!-- ═══════════════════════════════════════════ -->
+    <RuleGroup name="FileCreate" groupRelation="or">
+      <FileCreate onmatch="include">
+        <!-- Executable files created in suspicious locations -->
+        <TargetFilename condition="contains any">\Startup\;\Downloads\;\Temp\;\Public\</TargetFilename>
+        <!-- Script files -->
+        <TargetFilename condition="end with any">.exe;.dll;.bat;.cmd;.ps1;.vbs;.js;.hta;.scr;.pif</TargetFilename>
+        <!-- Memory dumps -->
+        <TargetFilename condition="end with any">.dmp;.dump</TargetFilename>
+      </FileCreate>
+    </RuleGroup>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- Event ID 12/13: Registry Changes            -->
+    <!-- ═══════════════════════════════════════════ -->
+    <RuleGroup name="RegistryEvent" groupRelation="or">
+      <RegistryEvent onmatch="include">
+        <!-- Run keys (persistence) -->
+        <TargetObject condition="contains any">CurrentVersion\Run;CurrentVersion\RunOnce</TargetObject>
+        <!-- Services (persistence) -->
+        <TargetObject condition="contains">Services\</TargetObject>
+        <!-- UAC bypass -->
+        <TargetObject condition="contains any">ms-settings\Shell;mscfile\Shell;Classes\exefile</TargetObject>
+        <!-- Image File Execution Options (debugger hijack) -->
+        <TargetObject condition="contains">Image File Execution Options</TargetObject>
+        <!-- AppInit DLLs -->
+        <TargetObject condition="contains">AppInit_DLLs</TargetObject>
+        <!-- Security settings -->
+        <TargetObject condition="contains any">DisableAntiSpyware;DisableRealtimeMonitoring</TargetObject>
+      </RegistryEvent>
+    </RuleGroup>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- Event ID 15: FileCreateStreamHash (ADS)     -->
+    <!-- ═══════════════════════════════════════════ -->
+    <RuleGroup name="FileCreateStreamHash" groupRelation="or">
+      <FileCreateStreamHash onmatch="include">
+        <!-- Alternate Data Streams -->
+        <TargetFilename condition="contains">:</TargetFilename>
+      </FileCreateStreamHash>
+      <FileCreateStreamHash onmatch="exclude">
+        <TargetFilename condition="end with">:Zone.Identifier</TargetFilename>
+      </FileCreateStreamHash>
+    </RuleGroup>
+
+    <!-- ═══════════════════════════════════════════ -->
+    <!-- Event ID 22: DNS Query                      -->
+    <!-- ═══════════════════════════════════════════ -->
+    <RuleGroup name="DnsQuery" groupRelation="or">
+      <DnsQuery onmatch="include">
+        <!-- Suspicious TLDs -->
+        <QueryName condition="end with any">.tk;.top;.xyz;.pw;.cc;.club;.work;.date;.bid;.onion</QueryName>
+        <!-- Long domain names (possible DGA or tunneling) -->
+        <QueryName condition="contains any">pastebin.com;raw.githubusercontent.com;transfer.sh;ngrok.io</QueryName>
+      </DnsQuery>
+    </RuleGroup>
+
+  </EventFiltering>
+</Sysmon>
+]]>

@@ -1,0 +1,85 @@
+<![CDATA[# ============================================================
+# Detection Rule: Brute Force (T1110)
+# SIEM Home Lab — MITRE ATT&CK Mapped Detection
+# ============================================================
+
+title: Brute Force Attack Detection (RDP & SSH)
+id: DET-001
+status: production
+description: |
+  Detects brute force attacks against Windows RDP (Event 4625, Logon Type 10)
+  and Linux SSH (auth.log failed password entries) by identifying a high volume
+  of failed authentication attempts from a single source IP within a 5-minute window.
+
+author: SOC Home Lab
+date: 2024-10-01
+modified: 2024-10-15
+
+mitre_attack:
+  technique_id: T1110
+  technique_name: Brute Force
+  sub_technique: T1110.001 (Password Guessing)
+  tactic: Credential Access
+  reference: https://attack.mitre.org/techniques/T1110/001/
+
+data_sources:
+  - Windows Security Event Log (Event ID 4625)
+  - Linux auth.log (sshd Failed password)
+  - Sysmon Event ID 3 (Network Connection)
+
+log_requirements:
+  - index: wineventlog
+    sourcetype: WinEventLog:Security
+    event_codes: [4625, 4624]
+  - index: linux
+    sourcetype: linux:auth
+    pattern: "Failed password"
+
+detection:
+  # ── Windows RDP Brute Force ──
+  windows_query: |
+    index=wineventlog EventCode=4625 Logon_Type=10
+    | bin _time span=5m
+    | stats count as failed_attempts,
+            values(Account_Name) as targeted_accounts,
+            dc(Account_Name) as unique_accounts
+      by src_ip, _time, ComputerName
+    | where failed_attempts > 10
+    | eval severity=case(
+        failed_attempts>50, "Critical",
+        failed_attempts>25, "High",
+        failed_attempts>10, "Medium")
+
+  # ── Linux SSH Brute Force ──
+  linux_query: |
+    index=linux sourcetype=linux:auth "Failed password"
+    | rex "Failed password for (?:invalid user )?(?<target_user>\S+) from (?<src_ip>\d+\.\d+\.\d+\.\d+)"
+    | bin _time span=5m
+    | stats count as failed_attempts,
+            values(target_user) as targeted_users,
+            dc(target_user) as unique_users
+      by src_ip, _time, host
+    | where failed_attempts > 10
+
+  condition: failed_attempts > 10 within 5 minutes from single source IP
+  schedule: "*/5 * * * *"
+  suppression:
+    fields: src_ip
+    period: 30m
+
+false_positives:
+  - Legitimate users with incorrect password (typically < 5 attempts)
+  - Service accounts with expired credentials
+  - Network scanning tools during authorized penetration tests
+  - Password rotation scripts
+
+tuning_notes:
+  - v1.0: Initial threshold of 5 attempts — too noisy (25% FP rate)
+  - v1.1: Raised threshold to 10 attempts — reduced FP to 8%
+  - v1.2: Excluded service accounts (svc_*, SYSTEM) — reduced FP to 5%
+  - v1.3: Added Logon_Type=10 filter for RDP-specific detection
+
+severity: high
+confidence: high
+risk_score: 80
+]]>

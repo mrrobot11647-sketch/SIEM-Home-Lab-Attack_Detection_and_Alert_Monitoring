@@ -1,0 +1,95 @@
+<![CDATA[# -*- mode: ruby -*-
+# vi: set ft=ruby :
+#
+# SIEM Home Lab — Vagrant Environment
+# Provisions 4 VMs: Splunk Server, Windows Target, Linux Target, Kali Attacker
+#
+# Usage:
+#   vagrant up              # Start all VMs
+#   vagrant up splunk       # Start only the Splunk server
+#   vagrant destroy -f      # Tear down all VMs
+#   vagrant snapshot save <vm> <name>  # Save snapshot before attacks
+
+Vagrant.configure("2") do |config|
+
+  # ──────────────────────────────────────────────
+  # Splunk Enterprise Server (Ubuntu 22.04)
+  # ──────────────────────────────────────────────
+  config.vm.define "splunk" do |splunk|
+    splunk.vm.box = "ubuntu/jammy64"
+    splunk.vm.hostname = "splunk-server"
+    splunk.vm.network "private_network", ip: "10.0.0.100", virtualbox__intnet: "siem-lab"
+    splunk.vm.network "forwarded_port", guest: 8000, host: 8000  # Splunk Web
+    splunk.vm.network "forwarded_port", guest: 9997, host: 9997  # Receiving port
+
+    splunk.vm.provider "virtualbox" do |vb|
+      vb.name = "SIEM-Lab-Splunk"
+      vb.memory = 6144
+      vb.cpus = 2
+    end
+
+    splunk.vm.provision "shell", path: "scripts/install_splunk_server.sh"
+  end
+
+  # ──────────────────────────────────────────────
+  # Windows Target (Windows Server 2022)
+  # ──────────────────────────────────────────────
+  config.vm.define "windows" do |win|
+    win.vm.box = "gusztavvargadr/windows-server-2022-standard"
+    win.vm.hostname = "win-target"
+    win.vm.network "private_network", ip: "10.0.0.20", virtualbox__intnet: "siem-lab"
+    win.vm.communicator = "winrm"
+    win.winrm.username = "vagrant"
+    win.winrm.password = "vagrant"
+
+    win.vm.provider "virtualbox" do |vb|
+      vb.name = "SIEM-Lab-Windows"
+      vb.memory = 4096
+      vb.cpus = 2
+      vb.gui = true
+    end
+
+    win.vm.provision "shell", path: "scripts/install_sysmon.ps1"
+    win.vm.provision "shell", path: "scripts/install_splunk_uf.ps1"
+  end
+
+  # ──────────────────────────────────────────────
+  # Linux Target (Ubuntu 22.04)
+  # ──────────────────────────────────────────────
+  config.vm.define "linux" do |linux|
+    linux.vm.box = "ubuntu/jammy64"
+    linux.vm.hostname = "linux-target"
+    linux.vm.network "private_network", ip: "10.0.0.30", virtualbox__intnet: "siem-lab"
+
+    linux.vm.provider "virtualbox" do |vb|
+      vb.name = "SIEM-Lab-Linux"
+      vb.memory = 2048
+      vb.cpus = 1
+    end
+
+    linux.vm.provision "shell", path: "scripts/configure_linux_logging.sh"
+  end
+
+  # ──────────────────────────────────────────────
+  # Kali Linux Attacker
+  # ──────────────────────────────────────────────
+  config.vm.define "kali" do |kali|
+    kali.vm.box = "kalilinux/rolling"
+    kali.vm.hostname = "kali-attacker"
+    kali.vm.network "private_network", ip: "10.0.0.10", virtualbox__intnet: "siem-lab"
+
+    kali.vm.provider "virtualbox" do |vb|
+      vb.name = "SIEM-Lab-Kali"
+      vb.memory = 4096
+      vb.cpus = 2
+      vb.gui = true
+    end
+
+    kali.vm.provision "shell", inline: <<-SHELL
+      apt-get update -y
+      apt-get install -y hydra nmap metasploit-framework seclists
+      echo "[*] Kali attacker provisioning complete"
+    SHELL
+  end
+end
+]]>
